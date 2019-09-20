@@ -107,9 +107,6 @@ fi
 for str_arg in "$@"
 do
 
-    str_arg_abs=$(readlink -f "$str_arg") #フルパスの取得
-    echo "$str_arg"
-
     if [ ! -e "$str_arg" ] ; then # 処理対象が存在しない場合
         echo
         echo "[warning] $str_arg"
@@ -117,7 +114,9 @@ do
     
     else # 処理対象が存在する場合
 
-        if [ -f "$str_arg" ] ; then # 処理対象はファイルの場合
+        str_arg_abs=$(readlink -f "$str_arg") #フルパスの取得
+
+        if [ -f "$str_arg_abs" ] ; then # 処理対象はファイルの場合
 
             if [ -n "$output_path_specified" ] ; then # 出力先指定がある場合
                 str_out_file_path=$(readlink -f "$output_path_specified") # 指定パスのフルパスを採用
@@ -137,6 +136,8 @@ do
 
                 # suffix 付きパス名の生成
                 str_out_file_path="$str_arg_parent/$str_arg_base_no_ext$STR_SUFFIX$str_arg_base_ext"
+
+                #todo ファイル 作成失敗時のハンドリング
             fi
 
             # 生成先ファイルの存在チェック
@@ -171,7 +172,7 @@ do
                 mkdir -p "$str_out_file_abs_parent" # 出力先ファイル配置用ディレクトリの作成
                 expand -t $INT_TAB_LENGTH "$str_file_abs" > "$str_out_file_abs"
 
-                # ファイル or ディレクトリ作成失敗時のハンドリング
+                #todo ファイル or ディレクトリ作成失敗時のハンドリング
 
             done
 
