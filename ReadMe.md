@@ -1,4 +1,5 @@
-Run the `expand` command recursively.
+Run the `expand` command recursively.  
+You can try `expand-recurse.sh example` command after pulling this repository.
 
 # Installation
 
@@ -9,8 +10,6 @@ Place `expand-recurse.sh` anywhere you like.
 ```
 $ expand-recurse.sh [-o output] [-f] [-h] input ...
 ```
-
-You can try `expand-recurse.sh example` command after pulling this repository.
 
 ## Required argment
 
