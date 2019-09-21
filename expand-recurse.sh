@@ -1,13 +1,66 @@
 #!/bin/sh
 
-STR_SUFFIX="_expanded" # 出力先が未指定の場合に付与する suffix
-INT_TAB_LENGTH=4       # expand コマンドの `-t` オプションに指定するタブ幅
-strarr_extentions=(    # expand 対象のファイル拡張子リスト
-    ".c"
+# <License>------------------------------------------------------------
+
+#  Copyright (c) 2019 Shinnosuke Yakenohara
+
+#  This program is free software: you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation, either version 3 of the License, or
+#  (at your option) any later version.
+
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+
+#  You should have received a copy of the GNU General Public License
+#  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+# -----------------------------------------------------------</License>
+
+
+# <Settings>-----------------------------------------------------------------
+STR_SUFFIX="_expanded" # suffix for output path
+INT_TAB_LENGTH=4       # `-t` option value of `expand` comand
+STRARR_EXTENSIONS=(    # File extensions to expand.
+    ".c"               # Files not in this list will be only copied.
     ".h"
 )
-STR_HELP="Usage: $0 [-o dir] [-f] item ..." # ヘルプ表示用
+# ----------------------------------------------------------------</Settings>
+
 bool_force_delete=1    # 出力先がすでに存在している場合に強制的に削除するかどうか(default:False)
+
+func_show_usage(){
+cat<<'EOF'
+
+# Usage
+
+```
+$ expand-recurse.sh [-o output] [-f] [-h] input ...
+```
+
+## Required argment
+
+ - input ...  
+   File(s) or directory(s) to expand.
+
+## Options
+
+ - `-o`  
+   Output path.
+ - `-f`  
+   If output path is already exists, that path will be deleted before prosess without asking on prompt.
+ - `-h`  
+   Show usage of this script.
+
+# Limitation
+
+ - Hidden path will be not processed  
+  If directory is specified, hidden file and directory placed under that specified directory will be not processed.
+
+EOF
+}
 
 # yes or no 取得
 bool_yn=1
@@ -140,9 +193,9 @@ func_check_target_is_in_list(){
 
     func_parse_file_ext "$str_to_check_path" # 拡張子取得
     
-    for ((int_index = 0; int_index < ${#strarr_extentions[@]}; int_index++))
+    for ((int_index = 0; int_index < ${#STRARR_EXTENSIONS[@]}; int_index++))
     do
-        if [ "${strarr_extentions[$int_index]}" = "$str_absolute_path_ext" ] ; then
+        if [ "${STRARR_EXTENSIONS[$int_index]}" = "$str_absolute_path_ext" ] ; then
             bool_in_list=0
             break
         fi
@@ -160,10 +213,11 @@ do
             ;;
         f ) bool_force_delete=0 # True を設定
             ;;
-        h ) echo $STR_HELP # ヘルプ表示の場合
+        h ) func_show_usage # ヘルプ表示
             exit 0 # 正常終了
             ;;
-        \?) echo "[error] $STR_HELP" 1>&2 # Unkown option の場合
+        \?) echo "[error] Unkown option specified." 1>&2 # Unkown option の場合
+            func_show_usage # ヘルプ表示
             exit 1 # 異常終了
             ;;
     esac
@@ -174,7 +228,7 @@ shift $(($OPTIND - 1)) # 引数リストのシフト
 if [ -n "$str_user_specified_out_path" ] ; then # 出力先が指定されていた場合
 
     if [ $# -gt 1 ] ; then # 処理対象が 2つ以上ある場合
-        echo "[error] If output specified (using `-o` option), number of target item should be only one." 1>&2
+        echo "[error] If output specified (using `-o` option), number of input item should be only one." 1>&2
         exit 1 # エラー終了
     fi
     
@@ -187,12 +241,13 @@ if [ -n "$str_user_specified_out_path" ] ; then # 出力先が指定されてい
 fi
 
 if [ $# -eq 0 ] ; then # 処理対象の指定がない場合
-    echo "[error] Item not specified" 1>&2
+    echo "[error] input item not specified" 1>&2
     exit 1 # 異常終了
 fi
 
 echo
 echo "Prosessing..."
+echo
 
 # 引数を順次処理するループ
 for str_arg in "$@"
@@ -263,9 +318,23 @@ do
             # 生成先ファイルの存在チェック
             func_check_delete "$str_out_dir_path_abs" "$str_arg_abs"
 
-            strarr_files=$(cd $str_arg_abs && find * -type f) # すべてのファイルリストを取得
+            strarr_files_cmd=$(cd $str_arg_abs && find * -type f) # すべてのファイルリストを取得
 
-            for str_file in $strarr_files; do
+            # スペースを含むパス名対応
+            IFS_BACK="$IFS" # IFS 設定をバックアップ
+            IFS=$'\n'       # IFS 設定を `\n` に変更
+            strarr_files=() # 配列定義
+            for strarr_files_cmd_elem in $strarr_files_cmd
+            do
+                strarr_files+=("$strarr_files_cmd_elem") # 配列に追加
+            done
+            IFS="$IFS_BACK" # IFS 設定をもとに戻す
+            
+            # 
+            for ((int_index_of_strarr_files=0 ; int_index_of_strarr_files < ${#strarr_files[@]}; int_index_of_strarr_files++))
+            do
+
+                str_file="${strarr_files[$int_index_of_strarr_files]}"
 
                 str_file_abs="$str_arg_abs/$str_file" #sourceフルパスの取得
                 str_out_file_abs="$str_out_dir_path_abs/$str_file" #outフルパスの取得
@@ -300,3 +369,6 @@ do
     fi
 
 done
+
+echo
+echo "Done!"
