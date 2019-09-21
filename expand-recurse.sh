@@ -2,6 +2,10 @@
 
 STR_SUFFIX="_expanded" # 出力先が未指定の場合に付与する suffix
 INT_TAB_LENGTH=4       # expand コマンドの `-t` オプションに指定するタブ幅
+strarr_extentions=(    # expand 対象のファイル拡張子リスト
+    ".c"
+    ".h"
+)
 STR_HELP="Usage: $0 [-o dir] [-f] item ..." # ヘルプ表示用
 bool_force_delete=1    # 出力先がすでに存在している場合に強制的に削除するかどうか(default:False)
 
@@ -26,8 +30,8 @@ func_yn(){
 # 生成先パスの存在チェック
 func_check_delete(){
 
-    str_out_path_abs=$1 # 確認対象(フルパス)
-    str_in_path_abs=$2  # 確認対象の生成元(フルパス)
+    str_out_path_abs="$1" # 確認対象(フルパス)
+    str_in_path_abs="$2"  # 確認対象の生成元(フルパス)
 
     bool_check_delete=1
     str_file_or_dir=""
@@ -100,8 +104,53 @@ func_check_delete(){
     fi
 }
 
+# ファイル名(拡張子なし)と拡張子に分割する
+str_absolute_path_parent=""
+str_absolute_path_base=""
+str_absolute_path_no_ext=""
+str_absolute_path_ext=""
+func_parse_file_ext(){
+
+    str_absolute_path="$1"
+
+    # initialize
+    str_absolute_path_parent=""
+    str_absolute_path_base=""
+    str_absolute_path_no_ext=""
+    str_absolute_path_ext=""
+
+    str_absolute_path_parent=$(dirname "$str_absolute_path") #親パスの取得
+    str_absolute_path_base=$(basename "$str_absolute_path") # ファイル名を取得
+    str_absolute_path_no_ext=${str_absolute_path_base%.*} # ファイル名(拡張子なし)を取得
+    str_absolute_path_ext=${str_absolute_path_base#${str_absolute_path_no_ext}} #拡張子名(`.`つき)を取得
+    
+    # 空文字の場合 (= `.` 始まりのファイル名の時 ( `.gitignore` 等))
+    if [ -z "$str_absolute_path_no_ext" ] ; then
+        str_absolute_path_no_ext="$str_absolute_path_ext"
+        str_absolute_path_ext=""
+    fi
+}
+
+# expand 対象のファイル拡張子リストに該当するかどうかチェックする
+bool_in_list=1
+func_check_target_is_in_list(){
+
+    str_to_check_path="$1"
+    bool_in_list=1
+
+    func_parse_file_ext "$str_to_check_path" # 拡張子取得
+    
+    for ((int_index = 0; int_index < ${#strarr_extentions[@]}; int_index++))
+    do
+        if [ "${strarr_extentions[$int_index]}" = "$str_absolute_path_ext" ] ; then
+            bool_in_list=0
+            break
+        fi
+    done
+}
+
 str_user_specified_out_path=""
-str_me_path_abs=$(readlink -f $0)
+str_me_path_abs=$(readlink -f "$0")
 
 # Option parsing
 while getopts o:fh OPT
@@ -128,14 +177,22 @@ if [ -n "$str_user_specified_out_path" ] ; then # 出力先が指定されてい
         echo "[error] If output specified (using `-o` option), number of target item should be only one." 1>&2
         exit 1 # エラー終了
     fi
+    
+    # ワイルドカードを指定していないかどうかチェック
+    echo "$str_user_specified_out_path" | grep "\*" > /dev/null
+    if [ $? -eq 0 ] ; then # ワイルドカードを指定している場合
+        echo "[error] Wild card \`*\` cannot specify as output." 1>&2
+        exit 1 # 異常終了
+    fi
 fi
-
-echo "\$#:$#"
 
 if [ $# -eq 0 ] ; then # 処理対象の指定がない場合
     echo "[error] Item not specified" 1>&2
     exit 1 # 異常終了
 fi
+
+echo
+echo "Prosessing..."
 
 # 引数を順次処理するループ
 for str_arg in "$@"
@@ -156,32 +213,42 @@ do
 
             if [ -n "$str_user_specified_out_path" ] ; then # 空文字ではない(=出力先指定がある場合)
                 str_out_file_path_abs=$(readlink -f "$str_user_specified_out_path") # 指定パスのフルパスを採用
-
+                
             else # 出力先指定がない場合
-                
-                str_arg_abs_parent=$(dirname "$str_arg_abs") #親パスの取得
-                str_arg_abs_base=$(basename "$str_arg_abs") # ファイル名を取得
-                str_arg_abs_base_no_ext=${str_arg_abs_base%.*} # ファイル名(拡張子なし)を取得
-                str_arg_abs_base_ext=${str_arg_abs_base#${str_arg_abs_base_no_ext}} #拡張子名(`.`つき)を取得
-                
-                # 空文字の場合 (= `.` 始まりのファイル名の時 ( `.gitignore` 等))
-                if [ -z "$str_arg_abs_base_no_ext" ] ; then
-                    str_arg_abs_base_no_ext="$str_arg_abs_base_ext"
-                    str_arg_abs_base_ext=""
-                fi
+
+                func_parse_file_ext "$str_arg_abs" # ファイル名(拡張子なし)と拡張子に分割
 
                 # suffix 付きパス名の生成
-                str_out_file_path_abs="$str_arg_abs_parent/$str_arg_abs_base_no_ext$STR_SUFFIX$str_arg_abs_base_ext"
+                str_out_file_path_abs="$str_absolute_path_parent/$str_absolute_path_no_ext$STR_SUFFIX$str_absolute_path_ext"
 
             fi
 
             # 生成先ファイルの存在チェック
             func_check_delete "$str_out_file_path_abs" "$str_arg_abs"
 
+            mkdir -p "$(dirname "$str_out_file_path_abs")" # 出力先ファイル配置用ディレクトリの作成
+
+            # expand 対象のファイル拡張子リストに該当するかどうかチェック
+            func_check_target_is_in_list "$str_out_file_path_abs"
+
+            if [ $bool_in_list -eq 0 ] ; then # 拡張子リストに該当する場合
+                expand -t $INT_TAB_LENGTH "$str_arg_abs" > "$str_out_file_path_abs" # expand
+                donecmd="expand -t $INT_TAB_LENGTH $str_arg_abs > $str_out_file_path_abs"
+
+            else # 拡張子リストに該当しない場合
+                cp "$str_arg_abs" "$str_out_file_path_abs" # copy
+                donecmd="cp $str_arg_abs $str_out_file_path_abs"
+            fi
+
             # expand
             expand -t $INT_TAB_LENGTH "$str_arg_abs" > "$str_out_file_path_abs"
 
-            #todo ファイル 作成失敗時のハンドリング
+            if [ $? -ne 0 ] ; then # expand コマンド失敗の場合
+                echo
+                echo "[error] Following command exists with a failure" 1>&2
+                echo "[error] $donecmd" 1>&2
+                # exit 1 # 異常終了
+            fi
 
         else # 処理対象はディレクトリの場合
 
@@ -190,8 +257,7 @@ do
 
             else # 出力先指定がない場合
 
-                # suffix 付きパス名の生成
-                str_out_dir_path_abs="$str_arg_abs$STR_SUFFIX"
+                str_out_dir_path_abs="$str_arg_abs$STR_SUFFIX" # suffix 付きパス名の生成
             fi
 
             # 生成先ファイルの存在チェック
@@ -207,13 +273,26 @@ do
 
                 echo "$str_file_abs"
 
-                #todo 対象ファイルの拡張子チェック
-
-                # expand
                 mkdir -p "$str_out_file_abs_parent" # 出力先ファイル配置用ディレクトリの作成
-                expand -t $INT_TAB_LENGTH "$str_file_abs" > "$str_out_file_abs"
 
-                #todo ファイル or ディレクトリ作成失敗時のハンドリング
+                # expand 対象のファイル拡張子リストに該当するかどうかチェック
+                func_check_target_is_in_list "$str_file_abs"
+
+                if [ $bool_in_list -eq 0 ] ; then # 拡張子リストに該当する場合
+                    expand -t $INT_TAB_LENGTH "$str_file_abs" > "$str_out_file_abs" # expand
+                    donecmd="expand -t $INT_TAB_LENGTH $str_file_abs > $str_out_file_abs"
+
+                else # 拡張子リストに該当しない場合
+                    cp "$str_file_abs" "$str_out_file_abs" # copy
+                    donecmd="cp $str_file_abs $str_out_file_abs"
+                fi
+
+                if [ $? -ne 0 ] ; then # expand コマンド失敗の場合
+                    echo
+                    echo "[error] Following command exists with a failure" 1>&2
+                    echo "[error] $donecmd" 1>&2
+                    exit 1 # 異常終了
+                fi
 
             done
 
